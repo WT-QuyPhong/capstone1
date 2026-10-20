@@ -100,6 +100,7 @@ jobs:
           output-file: ${{ runner.temp }}/codex-summary.md
           sandbox: workspace-write
           safety-strategy: drop-sudo
+          allow-users: ${{ github.repository_owner }}
 
       - name: Capture changes
         run: |
@@ -148,7 +149,7 @@ jobs:
           python3 - <<'PY'
           import subprocess
           from pathlib import PurePosixPath
-          paths = subprocess.check_output(['git', 'diff', '--cached', '--name-only', '-z'])
+          paths = subprocess.check_output(['git', 'diff', '--cached', '--no-renames', '--name-only', '-z'])
           for raw in paths.split(b'\0'):
               if not raw:
                   continue
