@@ -1,0 +1,8 @@
+node_modules
+dist
+.contentcraft-design
+.verification
+test-results
+playwright-report
+package-lock.json
+.github/workflows/codex-task.yml
