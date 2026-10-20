@@ -1,0 +1,207 @@
+name: Codex coding task
+
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: 'Describe the code change you want Codex to make'
+        required: true
+        type: string
+      base_branch:
+        description: 'Existing branch to start from'
+        required: true
+        default: main
+        type: string
+  issue_comment:
+    types: [created]
+
+permissions: {}
+
+concurrency:
+  group: codex-${{ github.event.issue.number || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  generate:
+    if: >-
+      github.actor == github.repository_owner &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event_name == 'issue_comment' &&
+        !github.event.issue.pull_request &&
+        startsWith(github.event.comment.body, '/codex ')))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    outputs:
+      base_branch: ${{ steps.prepare.outputs.base_branch }}
+      base_sha: ${{ steps.prepare.outputs.base_sha }}
+      source_url: ${{ steps.prepare.outputs.source_url }}
+    steps:
+      - name: Check OpenAI secret
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ -z "$OPENAI_API_KEY" ]; then
+            echo '::error::Add OPENAI_API_KEY in repository Settings > Secrets and variables > Actions.'
+            exit 1
+          fi
+
+      - name: Prepare trusted request
+        id: prepare
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const manual = context.eventName === 'workflow_dispatch';
+            const task = (manual
+              ? context.payload.inputs.task
+              : context.payload.comment.body.slice('/codex '.length)).trim();
+            if (!task || task.length > 20000) {
+              throw new Error('Task must contain between 1 and 20000 characters.');
+            }
+            const base = manual
+              ? context.payload.inputs.base_branch
+              : context.payload.repository.default_branch;
+            const { data: branch } = await github.rest.repos.getBranch({
+              ...context.repo, branch: base,
+            });
+            const prompt = [
+              'Implement the task below in this repository.',
+              'Read and follow applicable AGENTS.md instructions.',
+              'Make the requested changes and run appropriate available checks.',
+              'Do not commit, push, or change Git history or remotes.',
+              'Do not modify .github/, .git/, credential files, or secrets.',
+              'A separate job will publish the changes to a new branch.',
+              'Finish with a concise summary of changes, checks, and limitations.',
+              '', 'USER TASK:', task, '',
+            ].join('\n');
+            const promptPath = path.join(process.env.RUNNER_TEMP, 'codex-task.md');
+            fs.writeFileSync(promptPath, prompt);
+            core.setOutput('prompt_path', promptPath);
+            core.setOutput('base_branch', base);
+            core.setOutput('base_sha', branch.commit.sha);
+            core.setOutput('source_url', manual
+              ? `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
+              : context.payload.comment.html_url);
+
+      - name: Checkout starting commit
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ steps.prepare.outputs.base_sha }}
+          persist-credentials: false
+
+      - name: Implement task with Codex
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt-file: ${{ steps.prepare.outputs.prompt_path }}
+          output-file: ${{ runner.temp }}/codex-summary.md
+          sandbox: workspace-write
+          safety-strategy: drop-sudo
+
+      - name: Capture changes
+        run: |
+          mkdir -p "$RUNNER_TEMP/codex-result"
+          git -c core.hooksPath=/dev/null add --all
+          git diff --cached --binary --full-index --no-ext-diff HEAD -- . > "$RUNNER_TEMP/codex-result/changes.patch"
+          cp "$RUNNER_TEMP/codex-summary.md" "$RUNNER_TEMP/codex-result/summary.md"
+
+      - name: Save generated changes
+        uses: actions/upload-artifact@v4
+        with:
+          name: codex-result-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/codex-result/
+          retention-days: 7
+          if-no-files-found: error
+
+  publish:
+    needs: generate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout the same starting commit
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.generate.outputs.base_sha }}
+          persist-credentials: false
+
+      - name: Download generated changes
+        uses: actions/download-artifact@v4
+        with:
+          name: codex-result-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/codex-result/
+
+      - name: Apply and validate patch
+        id: changes
+        run: |
+          if [ ! -s "$RUNNER_TEMP/codex-result/changes.patch" ]; then
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+            echo 'Codex produced no file changes. See the generated summary in the run artifacts.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          git -c core.hooksPath=/dev/null apply --index --binary "$RUNNER_TEMP/codex-result/changes.patch"
+          python3 - <<'PY'
+          import subprocess
+          from pathlib import PurePosixPath
+          paths = subprocess.check_output(['git', 'diff', '--cached', '--name-only', '-z'])
+          for raw in paths.split(b'\0'):
+              if not raw:
+                  continue
+              name = raw.decode('utf-8')
+              parts = PurePosixPath(name).parts
+              if any(p.lower() in {'.git', '.github'} for p in parts):
+                  raise SystemExit(f'Protected automation path: {name}')
+              if any(p.lower() == '.env' or p.lower().startswith('.env.') for p in parts):
+                  if PurePosixPath(name).name.lower() not in {'.env.example', '.env.sample', '.env.template'}:
+                      raise SystemExit(f'Protected credential path: {name}')
+          PY
+          echo 'changed=true' >> "$GITHUB_OUTPUT"
+
+      - name: Commit and push new branch
+        if: steps.changes.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CODEX_BRANCH: codex/task-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          git switch -c "$CODEX_BRANCH"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git -c core.hooksPath=/dev/null -c commit.gpgsign=false commit -m 'feat: implement Codex task'
+          gh auth setup-git
+          git -c core.hooksPath=/dev/null push origin "HEAD:refs/heads/$CODEX_BRANCH"
+
+      - name: Open pull request
+        if: steps.changes.outputs.changed == 'true'
+        uses: actions/github-script@v7
+        env:
+          BASE_BRANCH: ${{ needs.generate.outputs.base_branch }}
+          SOURCE_URL: ${{ needs.generate.outputs.source_url }}
+          CODEX_BRANCH: codex/task-${{ github.run_id }}-${{ github.run_attempt }}
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const branch = process.env.CODEX_BRANCH;
+            const branchUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/tree/${branch}`;
+            await core.summary.addLink('Generated branch', branchUrl).write();
+            const summary = fs.readFileSync(path.join(process.env.RUNNER_TEMP, 'codex-result', 'summary.md'), 'utf8').slice(0, 50000);
+            try {
+              const { data: pr } = await github.rest.pulls.create({
+                ...context.repo,
+                base: process.env.BASE_BRANCH,
+                head: branch,
+                title: `Codex task ${context.runId}`,
+                body: `Request: ${process.env.SOURCE_URL}\n\n${summary}`,
+                draft: true,
+              });
+              await core.summary.addLink('Review draft pull request', pr.html_url).write();
+            } catch (error) {
+              if (error.status !== 403) throw error;
+              core.warning('Branch pushed. To enable automatic pull requests, allow GitHub Actions to create pull requests in Settings > Actions > General.');
+              await core.summary.addRaw('Branch pushed successfully. Automatic pull request creation is disabled in repository settings.').write();
+            }
