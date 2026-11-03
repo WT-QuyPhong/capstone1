@@ -1,9 +1,19 @@
 import { z } from 'zod'
-import type { WorkspaceData } from '../types'
+import { isAppRole } from '../auth/roles'
+import type { AppRole, WorkspaceData } from '../types'
 import { seed } from '../mocks/seed'
 
 export const WORKSPACE_KEY = 'contentcraft-workspace-v1'
 const text = z.string()
+const legacyMemberRoles = {
+  Admin: 'administrator',
+  Editor: 'user',
+  Reviewer: 'manager',
+} satisfies Record<string, AppRole>
+const memberRoleSchema = z.union([
+  z.custom<AppRole>(isAppRole),
+  z.enum(['Admin', 'Editor', 'Reviewer']).transform((role) => legacyMemberRoles[role]),
+])
 const workspaceSchema = z.object({
   brands: z.array(
     z.object({
@@ -64,7 +74,7 @@ const workspaceSchema = z.object({
       id: text,
       name: text,
       email: text,
-      role: z.enum(['Admin', 'Editor', 'Reviewer']),
+      role: memberRoleSchema,
       status: z.enum(['Active', 'Invited', 'Suspended']),
     }),
   ),

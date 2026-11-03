@@ -1,5 +1,14 @@
 import { expect, test } from '@playwright/test'
 
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      'contentcraft-demo-session',
+      JSON.stringify({ name: 'Demo Admin', email: 'admin@example.com', role: 'administrator' }),
+    )
+  })
+})
+
 test('brand context can be created, edited, filtered and persisted', async ({ page }) => {
   await page.goto('/dashboard/brands')
   await page.getByRole('button', { name: 'New brand', exact: true }).click()
@@ -141,42 +150,40 @@ test('demo team invitations, roles, statuses and audit entries persist locally',
   await page.getByRole('button', { name: 'Invite member', exact: true }).click()
   let dialog = page.getByRole('dialog')
   await expect(dialog).toContainText('No invitation email is sent')
-  await dialog.getByLabel('Full name', { exact: true }).fill('Campus Reviewer')
-  await dialog.getByLabel('Email address', { exact: true }).fill('campus.reviewer@example.com')
+  await dialog.getByLabel('Full name', { exact: true }).fill('Campus Manager')
+  await dialog.getByLabel('Email address', { exact: true }).fill('campus.manager@example.com')
   await dialog.getByRole('button', { name: 'Create demo invitation', exact: true }).click()
   const search = page.getByRole('searchbox', { name: 'Search members or roles' })
-  await search.fill('Campus Reviewer')
+  await search.fill('Campus Manager')
   const member = page.locator('.entity-member-row')
   await expect(member).toHaveCount(1)
   await expect(member).toContainText('Invited')
   await member.locator('.entity-member-name').click()
   dialog = page.getByRole('dialog')
-  await dialog.getByLabel('Workspace role', { exact: true }).selectOption('Reviewer')
+  await dialog.getByLabel('Workspace role', { exact: true }).selectOption('manager')
   await dialog.getByLabel('Status', { exact: true }).selectOption('Suspended')
   await dialog.getByRole('button', { name: 'Save member', exact: true }).click()
   await expect(member).toContainText('Suspended')
-  await expect(member.locator('.entity-role-pill')).toHaveText('Reviewer')
+  await expect(member.locator('.entity-role-pill')).toHaveText('Manager')
   await page.getByRole('button', { name: 'Filter team members', exact: true }).click()
-  await page.getByLabel('Role', { exact: true }).selectOption('Editor')
+  await page.getByLabel('Role', { exact: true }).selectOption('user')
   await expect(page.getByRole('heading', { name: 'No team members found' })).toBeVisible()
-  await page.getByLabel('Role', { exact: true }).selectOption('Reviewer')
+  await page.getByLabel('Role', { exact: true }).selectOption('manager')
   await page.getByLabel('Status', { exact: true }).selectOption('Suspended')
   await expect(member).toHaveCount(1)
   await page.reload()
-  await search.fill('Campus Reviewer')
+  await search.fill('Campus Manager')
   await expect(member).toContainText('Suspended')
   await search.fill('')
   await page.getByRole('tab', { name: 'Audit', exact: true }).click()
   await expect(
-    page.locator('.entity-audit-panel li').filter({ hasText: 'Added Campus Reviewer (Editor)' }),
+    page.locator('.entity-audit-panel li').filter({ hasText: 'Added Campus Manager (User)' }),
   ).toBeVisible()
   await expect(
-    page
-      .locator('.entity-audit-panel li')
-      .filter({ hasText: 'Updated Campus Reviewer (Reviewer)' }),
+    page.locator('.entity-audit-panel li').filter({ hasText: 'Updated Campus Manager (Manager)' }),
   ).toBeVisible()
   await page.getByRole('tab', { name: 'Roles', exact: true }).click()
-  await expect(page.getByRole('heading', { name: 'Reviewer', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Manager', exact: true })).toBeVisible()
   await page.getByRole('tab', { name: 'Usage', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Workspace usage', exact: true })).toBeVisible()
 })
@@ -185,16 +192,16 @@ test('the last active administrator cannot be demoted, suspended or deleted', as
   await page.goto('/dashboard/admin')
   const admin = page
     .locator('.entity-member-row')
-    .filter({ has: page.locator('.entity-role-pill').filter({ hasText: /^Admin$/ }) })
+    .filter({ has: page.locator('.entity-role-pill').filter({ hasText: /^Administrator$/ }) })
   await expect(admin).toHaveCount(1)
   await admin.locator('.entity-member-name').click()
   const dialog = page.getByRole('dialog')
-  await dialog.getByLabel('Workspace role', { exact: true }).selectOption('Reviewer')
+  await dialog.getByLabel('Workspace role', { exact: true }).selectOption('manager')
   await dialog.getByRole('button', { name: 'Save member', exact: true }).click()
   await expect(
     dialog.getByText('Keep at least one active administrator in the workspace.'),
   ).toBeVisible()
-  await dialog.getByLabel('Workspace role', { exact: false }).selectOption('Admin')
+  await dialog.getByLabel('Workspace role', { exact: false }).selectOption('administrator')
   await dialog.getByLabel('Status', { exact: true }).selectOption('Suspended')
   await dialog.getByRole('button', { name: 'Save member', exact: true }).click()
   await expect(

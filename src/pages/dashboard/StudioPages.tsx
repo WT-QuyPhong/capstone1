@@ -1,5 +1,5 @@
 import { useRef, useState, type ReactNode } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Archive,
   ArrowRight,
@@ -22,6 +22,7 @@ import {
   PencilLine,
   Plus,
   RefreshCw,
+  Send,
   Settings2,
   ShieldCheck,
   Sparkles,
@@ -30,8 +31,10 @@ import {
   Trash2,
   TrendingUp,
   UploadCloud,
+  Users,
   X,
   Zap,
+  type LucideIcon,
 } from 'lucide-react'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import {
@@ -43,10 +46,13 @@ import {
   Modal,
   SearchInput,
 } from '../../components/ui'
+import { canAccessRoute, canDeleteContent, hasPermission, ROLE_LABELS } from '../../auth/roles'
+import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
 import { useWorkspace } from '../../contexts/WorkspaceContext'
+import { ROUTES } from '../../routes/paths'
 import { generateImage, generateText } from '../../services/demo'
-import type { Content } from '../../types'
+import type { AppRole, Content } from '../../types'
 import './studio.css'
 
 const initialCopy =
@@ -110,14 +116,66 @@ function ContentStatus({ status }: { status: Content['status'] }) {
 }
 
 export function DashboardPage() {
-  const { contents } = useWorkspace()
+  const { contents, users } = useWorkspace()
+  const { session } = useAuth()
   const navigate = useNavigate()
+  const role = session?.role ?? 'user'
+  const roleViews: Record<
+    AppRole,
+    {
+      title: string
+      description: string
+      card: string
+      summary: string
+      actions: { path: string; query?: string; label: string; icon: LucideIcon }[]
+    }
+  > = {
+    user: {
+      title: 'Creator dashboard',
+      description: 'Create content, save drafts, and send your work to a reviewer.',
+      card: 'Create content',
+      summary: 'Start with brand and product context, then create copy or a visual.',
+      actions: [
+        { path: ROUTES.contentStudio, label: 'Generate content', icon: Sparkles },
+        { path: ROUTES.imageStudio, label: 'Create an image', icon: FileImage },
+      ],
+    },
+    manager: {
+      title: 'Manager dashboard',
+      description:
+        'Review submitted content and maintain the context creators use in their drafts.',
+      card: 'Content review queue',
+      summary: `${contents.filter((item) => item.status === 'In review').length} items awaiting review.`,
+      actions: [
+        {
+          path: ROUTES.history,
+          query: '?status=review',
+          label: 'Review queue',
+          icon: CheckCircle2,
+        },
+        { path: ROUTES.products, label: 'Manage products', icon: Plus },
+      ],
+    },
+    administrator: {
+      title: 'Administrator dashboard',
+      description: 'Manage the demo team and oversee content and workspace activity.',
+      card: 'Workspace administration',
+      summary: `${users.length} demo team members. Manage access and track workspace activity.`,
+      actions: [
+        { path: ROUTES.admin, label: 'Manage users', icon: Users },
+        { path: ROUTES.analytics, label: 'View analytics', icon: BarChart3 },
+      ],
+    },
+  }
+  const view = roleViews[role]
+  const quickActions = view.actions.filter((action) => canAccessRoute(role, action.path))
   const recent = contents.slice(0, 4)
   return (
     <div className="studio-page studio-overview">
       <StudioHeading
-        title="Good afternoon, ContentCraft team"
-        description="Your workspace overview and recent AI activity."
+        label={`${ROLE_LABELS[role]} workspace`}
+        title={view.title}
+        description={view.description}
       />
       <div className="studio-overview-grid">
         <section className="studio-card studio-quick-card">
@@ -125,28 +183,29 @@ export function DashboardPage() {
             <span className="studio-title-icon">
               <Zap size={17} />
             </span>
-            Quick actions
+            {view.card}
           </h2>
-          <p className="studio-muted studio-quick-description">
-            Create a new draft, upload product images, or update reusable brand context.
-          </p>
+          <p className="studio-muted studio-quick-description">{view.summary}</p>
           <div className="studio-quick-buttons">
-            <Button onClick={() => navigate('/dashboard/content-studio')}>
-              <Sparkles size={18} />
-              Generate content
-            </Button>
-            <Button variant="secondary" onClick={() => navigate('/dashboard/products?new=1')}>
-              <Plus size={18} />
-              Add product
-            </Button>
+            {quickActions.map(({ path, label, icon: Icon, query }, index) => (
+              <Button
+                key={path}
+                variant={index === 0 ? 'primary' : 'secondary'}
+                onClick={() => navigate(path + (query ?? ''))}
+              >
+                <Icon size={18} />
+                {label}
+              </Button>
+            ))}
           </div>
           <div className="studio-pro-tip">
             <Lightbulb size={24} />
             <div>
-              <strong>Pro-tip for your next campaign</strong>
+              <strong>{role === 'user' ? 'Ready for feedback?' : 'Working with demo data'}</strong>
               <p>
-                Define Target Personas under “Target Customers” before generating to make every
-                draft more relevant.
+                {role === 'user'
+                  ? 'Submit a draft for review when the copy is ready for a second set of eyes.'
+                  : 'Changes and role permissions in this workspace are simulated in this browser.'}
               </p>
             </div>
           </div>
@@ -212,6 +271,8 @@ export function DashboardPage() {
 
 export function ContentStudioPage() {
   const { brands, products, audiences, saveContent } = useWorkspace()
+  const { session } = useAuth()
+  const canReview = hasPermission(session?.role, 'reviewContent')
   const { notify } = useToast()
   const [brandId, setBrandId] = useState(brands[0]?.id ?? '')
   const [productId, setProductId] = useState(
@@ -268,6 +329,7 @@ export function ContentStudioPage() {
   }
 
   function save(nextStatus: Content['status']) {
+    if (nextStatus === 'Approved' && !canReview) return
     if (!brand || !product || !audience) {
       notify(
         'Choose a product belonging to the selected brand and a target customer before saving.',
@@ -299,7 +361,9 @@ export function ContentStudioPage() {
     notify(
       nextStatus === 'Approved'
         ? 'Version approved and saved to history.'
-        : 'Draft saved to history.',
+        : nextStatus === 'In review'
+          ? 'Draft submitted for review.'
+          : 'Draft saved to history.',
       'success',
     )
   }
@@ -478,8 +542,10 @@ export function ContentStudioPage() {
           <div className="studio-panel-title">
             <h2>Generated draft</h2>
             <div className="studio-output-status">
-              <Badge tone={status === 'Approved' ? 'green' : 'gray'}>
-                {status === 'Approved' ? 'Approved' : savedId ? 'Saved draft' : 'Draft · unsaved'}
+              <Badge
+                tone={status === 'Approved' ? 'green' : status === 'In review' ? 'amber' : 'gray'}
+              >
+                {status !== 'Draft' ? status : savedId ? 'Saved draft' : 'Draft · unsaved'}
               </Badge>
               <button
                 className="studio-icon-button"
@@ -522,8 +588,9 @@ export function ContentStudioPage() {
           <div className="studio-review-note">
             <Info size={22} />
             <p>
-              Human review required before approval or publishing. Verify product claims against
-              your brand guidelines.
+              {canReview
+                ? 'Human review required before approval or publishing. Verify product claims against your brand guidelines.'
+                : 'Check the draft against your brand guidelines, then submit it to a manager or administrator for review.'}
             </p>
           </div>
           <div className="studio-output-actions">
@@ -540,11 +607,13 @@ export function ContentStudioPage() {
               Save draft
             </Button>
             <Button
-              disabled={busy || !brand || !product || !audience}
-              onClick={() => save('Approved')}
+              disabled={
+                busy || !brand || !product || !audience || (!canReview && status === 'In review')
+              }
+              onClick={() => save(canReview ? 'Approved' : 'In review')}
             >
-              <CheckCircle2 size={17} />
-              Approve version
+              {canReview ? <CheckCircle2 size={17} /> : <Send size={17} />}
+              {canReview ? 'Approve version' : 'Submit for review'}
             </Button>
           </div>
         </section>
@@ -874,11 +943,18 @@ export function ImageStudioPage() {
 
 export function HistoryPage() {
   const { contents, brands, saveContent, deleteContent } = useWorkspace()
+  const { session } = useAuth()
+  const canReview = hasPermission(session?.role, 'reviewContent')
   const { notify } = useToast()
   const navigate = useNavigate()
-  const itemParam = new URLSearchParams(window.location.search).get('item')
+  const [params, setParams] = useSearchParams()
+  const itemParam = params.get('item')
   const [search, setSearch] = useState('')
-  const [filter, setFilter] = useState('all')
+  const filterParam = params.get('status')
+  const filter =
+    filterParam === 'approved' || filterParam === 'draft' || filterParam === 'review'
+      ? filterParam
+      : 'all'
   const [selected, setSelected] = useState<Content | null>(
     () => contents.find((item) => item.id === itemParam) ?? null,
   )
@@ -887,14 +963,22 @@ export function HistoryPage() {
   const [detailStatus, setDetailStatus] = useState<Content['status']>(selected?.status ?? 'Draft')
   const approved = contents.filter((item) => item.status === 'Approved')
   const drafts = contents.filter((item) => item.status === 'Draft')
+  const inReview = contents.filter((item) => item.status === 'In review')
+  const statuses = { approved: 'Approved', draft: 'Draft', review: 'In review' } as const
   const filtered = contents.filter(
     (item) =>
-      (filter === 'all' ||
-        (filter === 'approved' ? item.status === 'Approved' : item.status === 'Draft')) &&
+      (filter === 'all' || item.status === statuses[filter]) &&
       `${item.title} ${item.body} ${item.type} ${item.channel}`
         .toLowerCase()
         .includes(search.toLowerCase()),
   )
+
+  function setFilter(value: string) {
+    const next = new URLSearchParams(params)
+    if (value === 'all') next.delete('status')
+    else next.set('status', value)
+    setParams(next, { replace: true })
+  }
 
   function exportLog() {
     const rows = [
@@ -914,10 +998,11 @@ export function HistoryPage() {
   }
 
   function updateStatus() {
-    if (!selected) return
-    saveContent({ ...selected, status: detailStatus })
-    setSelected({ ...selected, status: detailStatus })
-    notify('Content status updated.', 'success')
+    if (!selected || (!canReview && selected.status !== 'Draft')) return
+    const updated: Content = { ...selected, status: canReview ? detailStatus : 'In review' }
+    saveContent(updated)
+    setSelected(updated)
+    notify(canReview ? 'Content status updated.' : 'Draft submitted for review.', 'success')
   }
 
   return (
@@ -950,6 +1035,7 @@ export function HistoryPage() {
             { id: 'all', label: `All items (${contents.length})` },
             { id: 'approved', label: `Approved (${approved.length})` },
             { id: 'draft', label: `Drafts (${drafts.length})` },
+            { id: 'review', label: `In review (${inReview.length})` },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -994,13 +1080,15 @@ export function HistoryPage() {
               >
                 <MoreVertical size={18} />
               </button>
-              <button
-                className="studio-icon-button studio-delete-button"
-                onClick={() => setDeleting(item)}
-                aria-label={`Delete ${item.title}`}
-              >
-                <Trash2 size={16} />
-              </button>
+              {canDeleteContent(session?.role, item) && (
+                <button
+                  className="studio-icon-button studio-delete-button"
+                  onClick={() => setDeleting(item)}
+                  aria-label={`Delete ${item.title}`}
+                >
+                  <Trash2 size={16} />
+                </button>
+              )}
             </div>
           </article>
         ))}
@@ -1049,10 +1137,12 @@ export function HistoryPage() {
             <Button variant="secondary" onClick={() => setSelected(null)}>
               Close
             </Button>
-            <Button onClick={updateStatus}>
-              <Check size={16} />
-              Save status
-            </Button>
+            {(canReview || selected?.status === 'Draft') && (
+              <Button onClick={updateStatus}>
+                {canReview ? <Check size={16} /> : <Send size={16} />}
+                {canReview ? 'Save status' : 'Submit for review'}
+              </Button>
+            )}
           </>
         }
       >
@@ -1062,6 +1152,7 @@ export function HistoryPage() {
               <Badge tone={selected.kind === 'image' ? 'blue' : 'gray'}>
                 {selected.kind === 'image' ? 'Visual' : selected.type}
               </Badge>
+              <ContentStatus status={selected.status} />
               <span>
                 {brands.find((item) => item.id === selected.brandId)?.name ?? 'Workspace content'}
               </span>
@@ -1073,17 +1164,19 @@ export function HistoryPage() {
               <img className="studio-detail-image" src={selected.image} alt={selected.title} />
             )}
             <div className="studio-detail-body">{selected.body}</div>
-            <Field label="Approval status">
-              <select
-                value={detailStatus}
-                onChange={(event) => setDetailStatus(event.target.value as Content['status'])}
-                aria-label="Approval status"
-              >
-                <option>Draft</option>
-                <option>In review</option>
-                <option>Approved</option>
-              </select>
-            </Field>
+            {canReview && (
+              <Field label="Approval status">
+                <select
+                  value={detailStatus}
+                  onChange={(event) => setDetailStatus(event.target.value as Content['status'])}
+                  aria-label="Approval status"
+                >
+                  <option>Draft</option>
+                  <option>In review</option>
+                  <option>Approved</option>
+                </select>
+              </Field>
+            )}
             <Button
               variant="secondary"
               onClick={async () => {
@@ -1113,7 +1206,7 @@ export function HistoryPage() {
             <Button
               variant="danger"
               onClick={() => {
-                if (deleting) {
+                if (deleting && canDeleteContent(session?.role, deleting)) {
                   deleteContent(deleting.id)
                   notify('Content deleted.', 'success')
                 }

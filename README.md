@@ -15,7 +15,7 @@ npm ci
 npm run dev
 ```
 
-Open Vite's printed URL (normally `http://127.0.0.1:5173`). On PowerShell use `npm.cmd` if execution policy blocks `npm.ps1`. The dashboard can be explored directly at `/dashboard`.
+Open Vite's printed URL (normally `http://127.0.0.1:5173`). On PowerShell use `npm.cmd` if execution policy blocks `npm.ps1`. Open `/login`, select the small User, Administrator, or Manager option in the original form, then sign in to preview that role's dashboard. Demo credentials are not verified; use a sample email and any password of at least eight characters.
 
 Demo sign-in accepts a valid email and a password of at least eight characters. Registration also validates full name, password confirmation and agreement. Passwords are **never saved or sent**. Remember-me stores only demo display name/email; Google sign-in explains that OAuth is unavailable before offering demo access.
 
@@ -56,25 +56,26 @@ React, TypeScript, Vite, Tailwind CSS 4, React Router, Lucide React, Recharts, R
 
 ## Screens and routes
 
-| Screen              | Route                       | Frontend functionality                                                              |
-| ------------------- | --------------------------- | ----------------------------------------------------------------------------------- |
-| Features / landing  | `/`, `/features`            | Capability suite, draft copy/variation, workflow dialogs and CTAs                   |
-| Integrations        | `/integrations`             | Search/categories, connection explanations and demo requests                        |
-| Built For           | `/built-for`                | Audience groups, use-case dialogs, conversion sections                              |
-| Resources           | `/resources`                | Search/filter, resource details, archive, local newsletter demo                     |
-| Promotional landing | `/get-started`              | Distinct “Create smarter. Grow faster.” page and email handoff                      |
-| Sign in             | `/login`                    | Validation, password visibility, remember-me, demo entry                            |
-| Sign up             | `/register`                 | Name/email/password/confirmation/agreement validation                               |
-| Dashboard           | `/dashboard`                | Quick actions, recent records, notifications/account dialogs                        |
-| Products            | `/dashboard/products`       | Validated CRUD, search, status/category filters                                     |
-| Brands              | `/dashboard/brands`         | Context/voice/color forms, search, JSON import                                      |
-| Target customers    | `/dashboard/audiences`      | Persona CRUD, traits, filters and JSON import                                       |
-| AI Content Studio   | `/dashboard/content-studio` | Brand/product/audience selectors, VI/EN templates, edit/copy/save/approval          |
-| Image Studio        | `/dashboard/image-studio`   | Prompt/style/ratio, reference preview, local illustration, save/download/fullscreen |
-| Content history     | `/dashboard/history`        | Persistent records, search/status filters, detail/status/delete and CSV export      |
-| Analytics           | `/dashboard/analytics`      | Recharts, date-range datasets, breakdown and CSV export                             |
-| Administration      | `/dashboard/admin`          | Local members, roles/status, demo invitations, usage/audit and SSO explanation      |
-| Not Found           | Unknown URLs                | Working home return path                                                            |
+| Screen              | Route                                                   | Frontend functionality                                                              |
+| ------------------- | ------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| Features / landing  | `/`, `/features`                                        | Capability suite, draft copy/variation, workflow dialogs and CTAs                   |
+| Integrations        | `/integrations`                                         | Search/categories, connection explanations and demo requests                        |
+| Built For           | `/built-for`                                            | Audience groups, use-case dialogs, conversion sections                              |
+| Resources           | `/resources`                                            | Search/filter, resource details, archive, local newsletter demo                     |
+| Promotional landing | `/get-started`                                          | Distinct “Create smarter. Grow faster.” page and email handoff                      |
+| Sign in             | `/login`                                                | Original login layout with compact role radio options                               |
+| Role sign in        | `/login/user`, `/login/manager`, `/login/administrator` | Validation, role-specific pages, remember-me, permitted return paths                |
+| Sign up             | `/register`                                             | Name/email/password/confirmation/agreement validation                               |
+| Dashboard           | `/dashboard`                                            | Quick actions, recent records, notifications/account dialogs                        |
+| Products            | `/dashboard/products`                                   | Validated CRUD, search, status/category filters                                     |
+| Brands              | `/dashboard/brands`                                     | Context/voice/color forms, search, JSON import                                      |
+| Target customers    | `/dashboard/audiences`                                  | Persona CRUD, traits, filters and JSON import                                       |
+| AI Content Studio   | `/dashboard/content-studio`                             | Brand/product/audience selectors, VI/EN templates, edit/copy/save/approval          |
+| Image Studio        | `/dashboard/image-studio`                               | Prompt/style/ratio, reference preview, local illustration, save/download/fullscreen |
+| Content history     | `/dashboard/history`                                    | Persistent records, search/status filters, detail/status/delete and CSV export      |
+| Analytics           | `/dashboard/analytics`                                  | Recharts, date-range datasets, breakdown and CSV export                             |
+| Administration      | `/dashboard/admin`                                      | Local members, roles/status, demo invitations, usage/audit and SSO explanation      |
+| Not Found           | Unknown URLs                                            | Working home return path                                                            |
 
 All visible navigation links respond. Pricing, privacy, terms, support and service entry points without full reference screens use relevant informational dialogs or Resources instead of invented unrelated screens.
 
@@ -115,13 +116,13 @@ capstone1/
 ## Demo data and limitations
 
 - `contentcraft-workspace-v1` stores workspace records in localStorage. Zod validates persisted data and recovers malformed data with examples.
-- `contentcraft-demo-session` stores name/email in localStorage when remembered, otherwise sessionStorage. It is not a real authenticated session; dashboard routes are intentionally accessible for demonstrations.
+- `contentcraft-demo-session` stores name/email/role in localStorage when remembered, otherwise sessionStorage. Dashboard routes require a demo session and check the selected role. This is not a real authenticated session. See [Role permissions and login flows](docs/ROLES.md).
 - Newsletter, feedback, integration requests and member audit entries are browser-local. No subscription or invitation email is sent.
 - Text is composed from local templates and chosen context. Image generation returns the same local SVG illustration; prompts, styles and uploaded references demonstrate configuration, not a working image model.
 - Editing saved approved copy produces an unsaved Draft and preserves the approved record. This is not a server-side immutable revision/audit system.
 - Analytics are representative datasets, with local date-range changes. No live channel measurement occurs.
 - Saved edits survive reloads at the same browser origin. Unsaved forms may reset on navigation. Data does not synchronize between accounts, origins or devices.
-- Local member roles are UI controls, not enforced authorization. A linked brand cannot be deleted while products reference it; the last active administrator cannot be removed or demoted.
+- Frontend routes and mutation handlers enforce the selected demo role. Production authorization still requires a backend. Member records are examples, not login credentials. A linked brand cannot be deleted while products reference it; the last active administrator cannot be removed or demoted.
 - Browser storage has quota/privacy limits. Do not store sensitive information in the demo. Back up desired records before clearing storage; removing `contentcraft-workspace-v1` and reloading resets examples.
 
 ## Environment and backend integration

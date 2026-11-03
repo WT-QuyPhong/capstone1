@@ -21,6 +21,8 @@ import {
 import { Button, Input, Modal } from '../../components/ui'
 import { useToast } from '../../contexts/ToastContext'
 import { useAuth } from '../../contexts/AuthContext'
+import { canAccessRoute, ROLE_LABELS } from '../../auth/roles'
+import type { AppRole } from '../../types'
 import './auth.css'
 
 export function makeAuthSchema(register: boolean) {
@@ -74,8 +76,28 @@ function GoogleIcon() {
   )
 }
 
-export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
+function safeDestination(role: AppRole, next: string | null) {
+  if (!next?.startsWith('/') || next.startsWith('//') || next.includes('\\')) return '/dashboard'
+  try {
+    const destination = new URL(next, window.location.origin)
+    if (destination.origin === window.location.origin && canAccessRoute(role, destination.pathname))
+      return `${destination.pathname}${destination.search}${destination.hash}`
+  } catch {
+    // Malformed destinations fall back to the dashboard.
+  }
+  return '/dashboard'
+}
+
+export default function AuthPage({
+  mode,
+  role = 'user',
+}: {
+  mode: 'login' | 'register'
+  role?: AppRole
+}) {
   const isRegister = mode === 'register'
+  const [selectedRole, setSelectedRole] = useState<AppRole>(role)
+  const activeRole = isRegister ? 'user' : selectedRole
   const [visible, setVisible] = useState(false)
   const [confirmVisible, setConfirmVisible] = useState(false)
   const [remember, setRemember] = useState(true)
@@ -98,7 +120,11 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
   const submit = async (values: AuthFields) => {
     await new Promise((resolve) => window.setTimeout(resolve, 350))
     signIn(
-      { name: values.fullName?.trim() || values.email.split('@')[0], email: values.email },
+      {
+        name: values.fullName?.trim() || values.email.split('@')[0],
+        email: values.email,
+        role: activeRole,
+      },
       remember,
     )
     notify(
@@ -106,7 +132,9 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
         ? 'Demo workspace created. No real account was registered.'
         : 'Welcome to your demo workspace.',
     )
-    navigate('/dashboard')
+    navigate(isRegister ? '/dashboard' : safeDestination(activeRole, params.get('next')), {
+      replace: true,
+    })
   }
   return (
     <main id="main-content" className={`auth-page ${isRegister ? 'auth-register' : ''}`}>
@@ -212,6 +240,25 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
               ? 'Start your ContentCraft workspace'
               : 'Sign in to continue to your workspace'}
           </p>
+          {!isRegister && (
+            <fieldset className="auth-role-options">
+              <legend>Sign in as</legend>
+              <div className="auth-role-row">
+                {(['user', 'administrator', 'manager'] as const).map((option) => (
+                  <label key={option} className={activeRole === option ? 'is-selected' : ''}>
+                    <input
+                      type="radio"
+                      name="login-role"
+                      value={option}
+                      checked={activeRole === option}
+                      onChange={() => setSelectedRole(option)}
+                    />
+                    <span>{ROLE_LABELS[option]}</span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          )}
           <button className="auth-google" type="button" onClick={() => setPanel('google')}>
             <GoogleIcon /> Continue with Google
           </button>
@@ -398,8 +445,18 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
             </p>
             <Button
               onClick={() => {
-                signIn({ name: 'Demo Creator', email: 'creator@contentcraft.demo' }, false)
-                navigate('/dashboard')
+                signIn(
+                  {
+                    name: `Demo ${ROLE_LABELS[activeRole]}`,
+                    email: `${activeRole}@contentcraft.demo`,
+                    role: activeRole,
+                  },
+                  false,
+                )
+                navigate(
+                  isRegister ? '/dashboard' : safeDestination(activeRole, params.get('next')),
+                  { replace: true },
+                )
                 notify('Entered demo mode. No Google authentication occurred.', 'info')
               }}
             >

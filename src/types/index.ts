@@ -44,11 +44,13 @@ export interface Content {
   kind: 'text' | 'image'
   image?: string
 }
+export type AppRole = 'user' | 'manager' | 'administrator'
+
 export interface User {
   id: string
   name: string
   email: string
-  role: 'Admin' | 'Editor' | 'Reviewer'
+  role: AppRole
   status: 'Active' | 'Invited' | 'Suspended'
 }
 export interface WorkspaceData {
@@ -61,4 +63,5 @@ export interface WorkspaceData {
 export interface DemoSession {
   name: string
   email: string
+  role: AppRole
 }

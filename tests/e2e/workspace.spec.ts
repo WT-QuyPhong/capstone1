@@ -1,6 +1,15 @@
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
 
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      'contentcraft-demo-session',
+      JSON.stringify({ name: 'Demo Admin', email: 'admin@example.com', role: 'administrator' }),
+    )
+  })
+})
+
 const dashboardRoutes = [
   '/dashboard',
   '/dashboard/products',
