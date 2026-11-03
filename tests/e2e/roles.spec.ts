@@ -6,6 +6,17 @@ async function login(page: Page, role: 'user' | 'manager' | 'administrator') {
   await page.getByLabel('PASSWORD', { exact: true }).fill('demo-password-123')
   await page.getByRole('button', { name: 'Sign in', exact: true }).click()
   await expect(page).toHaveURL('/dashboard')
+  await expect(
+    page.getByRole('heading', {
+      name:
+        role === 'user'
+          ? 'Creator dashboard'
+          : role === 'manager'
+            ? 'Manager dashboard'
+            : 'Administrator dashboard',
+      exact: true,
+    }),
+  ).toBeVisible()
 }
 
 test('unauthenticated dashboard visits require sign-in', async ({ page }) => {
