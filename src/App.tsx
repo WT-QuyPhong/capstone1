@@ -1,10 +1,12 @@
 import { Component, Suspense, lazy, useEffect, type ErrorInfo, type ReactNode } from 'react'
-import { Link, Route, Routes, useLocation } from 'react-router-dom'
+import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import { BrandMark, LoadingState } from './components/ui'
 import DashboardLayout from './layouts/DashboardLayout'
 import PublicLayout from './layouts/PublicLayout'
 import { ROUTES } from './routes/paths'
+import { useAuth } from './contexts/AuthContext'
+import { canAccessRoute, ROLE_LABELS } from './auth/roles'
 
 const AuthPage = lazy(() => import('./pages/auth/AuthPage'))
 const FeaturesPage = lazy(() =>
@@ -49,6 +51,30 @@ const HistoryPage = lazy(() =>
 const AnalyticsPage = lazy(() =>
   import('./pages/dashboard/StudioPages').then((m) => ({ default: m.AnalyticsPage })),
 )
+
+function WorkspaceGate() {
+  const { session } = useAuth()
+  const location = useLocation()
+  if (!session)
+    return (
+      <Navigate
+        to={`/login?next=${encodeURIComponent(location.pathname + location.search)}`}
+        replace
+      />
+    )
+  if (!canAccessRoute(session.role, location.pathname))
+    return (
+      <main className="not-found" id="main-content">
+        <BrandMark />
+        <h1>Access restricted</h1>
+        <p>This page is not available to the {ROLE_LABELS[session.role]} role.</p>
+        <Link className="cc-button cc-button-primary" to={ROUTES.dashboard}>
+          Back to your dashboard
+        </Link>
+      </main>
+    )
+  return <DashboardLayout />
+}
 
 function NotFound() {
   return (
@@ -97,6 +123,9 @@ function RouteEffects() {
       '/resources': 'Resources',
       '/get-started': 'Create smarter',
       '/login': 'Sign in',
+      '/login/user': 'User sign in',
+      '/login/manager': 'Manager sign in',
+      '/login/administrator': 'Administrator sign in',
       '/register': 'Create account',
       '/dashboard': 'Dashboard',
       '/dashboard/products': 'Products',
@@ -130,8 +159,17 @@ export default function App() {
             <Route path="get-started" element={<GetStartedPage />} />
           </Route>
           <Route path={ROUTES.login} element={<AuthPage key="login" mode="login" />} />
+          <Route path="/login/user" element={<AuthPage key="user" mode="login" role="user" />} />
+          <Route
+            path="/login/manager"
+            element={<AuthPage key="manager" mode="login" role="manager" />}
+          />
+          <Route
+            path="/login/administrator"
+            element={<AuthPage key="administrator" mode="login" role="administrator" />}
+          />
           <Route path={ROUTES.register} element={<AuthPage key="register" mode="register" />} />
-          <Route path={ROUTES.dashboard} element={<DashboardLayout />}>
+          <Route path={ROUTES.dashboard} element={<WorkspaceGate />}>
             <Route index element={<DashboardPage />} />
             <Route path="products" element={<ProductsPage />} />
             <Route path="brands" element={<BrandsPage />} />

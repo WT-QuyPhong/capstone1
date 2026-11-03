@@ -572,3 +572,42 @@
     font-size: 13px;
   }
 }
+
+.auth-role-options {
+  border: 0;
+  padding: 0;
+  margin: 0 0 18px;
+  min-width: 0;
+}
+.auth-role-options legend {
+  font-size: 11px;
+  color: #66736c;
+  margin-bottom: 7px;
+}
+.auth-role-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.auth-role-row label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 8px;
+  border: 1px solid #dfe6dc;
+  border-radius: 7px;
+  color: #56635b;
+  font-size: 11px;
+  cursor: pointer;
+}
+.auth-role-row label.is-selected {
+  border-color: #93bc87;
+  background: #eef7e9;
+  color: #254b2e;
+}
+.auth-role-row input {
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  accent-color: #3e7142;
+}

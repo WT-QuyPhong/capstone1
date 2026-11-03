@@ -1,0 +1,25 @@
+.workspace-role {
+  border-radius: 999px;
+  padding: 5px 10px;
+  color: #326047;
+  background: #e9f6ec;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.workspace-role-manager {
+  color: #255a73;
+  background: #e5f3f9;
+}
+
+.workspace-role-administrator {
+  color: #594581;
+  background: #f0eafb;
+}
+
+@media (max-width: 420px) {
+  .workspace-role {
+    display: none;
+  }
+}

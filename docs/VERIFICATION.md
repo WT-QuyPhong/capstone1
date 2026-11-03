@@ -1,5 +1,27 @@
 # ContentCraft verification report
 
+## Role update — 3 November 2026
+
+The original login design is preserved with three compact radio options inside
+the existing form. User, Manager, and Administrator sessions receive different
+dashboards, navigation, routes, and available actions. Registration stays User.
+
+- Production build, TypeScript, ESLint, and 12 unit tests passed.
+- The final authentication and role browser suite passed all 39 tests in Edge.
+  It covers role selection without losing typed credentials, valid/invalid return
+  paths, remembered sessions, logout, legacy session migration, restricted direct
+  URLs, and User submission followed by Manager approval.
+- The broader suite passed the other 50 marketing, entity, workspace, and
+  responsive tests. An initial logout redirect failure was corrected and is
+  covered by the final authentication rerun.
+- Login screens were checked at 375, 430, 768, 1024, and 1440 pixels. Role-specific
+  dashboards were checked at 375 and 1440 pixels. Desktop/mobile screenshots were
+  inspected; no horizontal overflow was detected.
+- No backend authentication or production authorization was added. Demo data is
+  shared within the browser; selecting a role previews that role's interface.
+
+The report below records the original frontend delivery checks.
+
 Verified on 20 October 2026 on Windows, using Node 22.21.1, npm, and Edge Chromium through Playwright. All checks below were actually executed. No live AI or OAuth credentials were used.
 
 ## Executed checks

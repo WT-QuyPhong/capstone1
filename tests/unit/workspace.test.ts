@@ -13,6 +13,29 @@ describe('demo data boundaries', () => {
     data.products[0].name = 'My edited coffee'
     expect(readWorkspace(JSON.stringify(data)).products[0].name).toBe('My edited coffee')
   })
+  it('migrates legacy member roles without discarding saved workspace records', () => {
+    const saved = readWorkspace(null)
+    saved.products[0].name = 'Saved legacy coffee'
+    const legacy = {
+      ...saved,
+      users: [
+        { ...saved.users[0], name: 'Saved legacy admin', role: 'Admin' },
+        { ...saved.users[1], role: 'Editor' },
+        { ...saved.users[2], role: 'Reviewer' },
+        { ...saved.users[3], role: 'user' },
+      ],
+    }
+    const migrated = readWorkspace(JSON.stringify(legacy))
+    expect(migrated.products).toEqual(saved.products)
+    expect(migrated.contents).toEqual(saved.contents)
+    expect(migrated.users).toEqual([
+      { ...legacy.users[0], role: 'administrator' },
+      { ...legacy.users[1], role: 'user' },
+      { ...legacy.users[2], role: 'manager' },
+      { ...legacy.users[3], role: 'user' },
+    ])
+    expect(readWorkspace(JSON.stringify(migrated))).toEqual(migrated)
+  })
   it('adds and replaces immutable records without duplicates', () => {
     const items = [{ id: 'a', value: 1 }]
     expect(upsert(items, { id: 'a', value: 2 })).toEqual([{ id: 'a', value: 2 }])

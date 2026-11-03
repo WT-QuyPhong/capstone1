@@ -2,6 +2,8 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import type { Audience, Brand, Content, Product, User, WorkspaceData } from '../types'
 import { readWorkspace, upsert, WORKSPACE_KEY } from '../utils/storage'
 import { useToast } from './ToastContext'
+import { useAuth } from './AuthContext'
+import { canDeleteContent, canSaveContent, hasPermission, type Permission } from '../auth/roles'
 
 interface WorkspaceContextValue extends WorkspaceData {
   saveProduct: (item: Product) => void
@@ -18,6 +20,7 @@ interface WorkspaceContextValue extends WorkspaceData {
 const WorkspaceContext = createContext<WorkspaceContextValue | null>(null)
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const { notify } = useToast()
+  const { session } = useAuth()
   const [data, setData] = useState<WorkspaceData>(() => {
     try {
       return readWorkspace(localStorage.getItem(WORKSPACE_KEY))
@@ -43,20 +46,61 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   }
   const remove = (key: keyof WorkspaceData, id: string) =>
     setData((previous) => ({ ...previous, [key]: previous[key].filter((item) => item.id !== id) }))
+  const permitted = (permission: Permission) => {
+    const allowed = hasPermission(session?.role, permission)
+    if (!allowed) notify('Your role does not have permission for this action.', 'error')
+    return allowed
+  }
   return (
     <WorkspaceContext.Provider
       value={{
         ...data,
-        saveProduct: (item) => save('products', item),
-        deleteProduct: (id) => remove('products', id),
-        saveBrand: (item) => save('brands', item),
-        deleteBrand: (id) => remove('brands', id),
-        saveAudience: (item) => save('audiences', item),
-        deleteAudience: (id) => remove('audiences', id),
-        saveContent: (item) => save('contents', item),
-        deleteContent: (id) => remove('contents', id),
-        saveUser: (item) => save('users', item),
-        deleteUser: (id) => remove('users', id),
+        users: hasPermission(session?.role, 'manageUsers') ? data.users : [],
+        saveProduct: (item) => {
+          if (permitted('manageCatalog')) save('products', item)
+        },
+        deleteProduct: (id) => {
+          if (permitted('manageCatalog')) remove('products', id)
+        },
+        saveBrand: (item) => {
+          if (permitted('manageCatalog')) save('brands', item)
+        },
+        deleteBrand: (id) => {
+          if (permitted('manageCatalog')) remove('brands', id)
+        },
+        saveAudience: (item) => {
+          if (permitted('manageCatalog')) save('audiences', item)
+        },
+        deleteAudience: (id) => {
+          if (permitted('manageCatalog')) remove('audiences', id)
+        },
+        saveContent: (item) => {
+          if (
+            canSaveContent(
+              session?.role,
+              item,
+              data.contents.find((entry) => entry.id === item.id),
+            )
+          )
+            save('contents', item)
+          else notify('Only a manager or administrator can change approved content.', 'error')
+        },
+        deleteContent: (id) => {
+          if (
+            canDeleteContent(
+              session?.role,
+              data.contents.find((item) => item.id === id),
+            )
+          )
+            remove('contents', id)
+          else notify('Only a manager or administrator can delete approved content.', 'error')
+        },
+        saveUser: (item) => {
+          if (permitted('manageUsers')) save('users', item)
+        },
+        deleteUser: (id) => {
+          if (permitted('manageUsers')) remove('users', id)
+        },
       }}
     >
       {children}

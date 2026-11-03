@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, type ReactNode } from 'react'
 import type { DemoSession } from '../types'
+import { parseDemoSession } from '../auth/roles'
 
 const key = 'contentcraft-demo-session'
 interface AuthValue {
@@ -11,18 +12,7 @@ const AuthContext = createContext<AuthValue | null>(null)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<DemoSession | null>(() => {
     try {
-      const parsed: unknown = JSON.parse(
-        localStorage.getItem(key) || sessionStorage.getItem(key) || 'null',
-      )
-      if (
-        parsed &&
-        typeof parsed === 'object' &&
-        'name' in parsed &&
-        'email' in parsed &&
-        typeof parsed.name === 'string' &&
-        typeof parsed.email === 'string'
-      )
-        return parsed as DemoSession
+      return parseDemoSession(localStorage.getItem(key) || sessionStorage.getItem(key))
     } catch {
       /* An unavailable browser store does not prevent the demo. */
     }

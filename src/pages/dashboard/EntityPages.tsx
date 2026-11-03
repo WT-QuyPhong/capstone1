@@ -38,7 +38,8 @@ import {
 } from '../../components/ui'
 import { useToast } from '../../contexts/ToastContext'
 import { useWorkspace } from '../../contexts/WorkspaceContext'
-import type { Audience, Brand, Product, User } from '../../types'
+import { ROLE_LABELS } from '../../auth/roles'
+import type { AppRole, Audience, Brand, Product, User } from '../../types'
 import './entities.css'
 
 const productSchema = z.object({
@@ -81,10 +82,11 @@ const audienceSchema = z.object({
   tone: z.string().trim().min(3, 'Describe a suitable tone.'),
   status: z.enum(['Active', 'Draft']),
 })
+const memberRoles = Object.keys(ROLE_LABELS) as AppRole[]
 const userSchema = z.object({
   name: z.string().trim().min(2, 'Enter the member’s full name.').max(100),
   email: z.string().trim().email('Enter a valid email address.'),
-  role: z.enum(['Admin', 'Editor', 'Reviewer']),
+  role: z.enum(memberRoles),
   status: z.enum(['Active', 'Invited', 'Suspended']),
 })
 type ProductFormValues = z.infer<typeof productSchema>
@@ -1213,7 +1215,7 @@ function MemberEditor({
     formState: { errors },
   } = useForm<UserFormValues>({ resolver: zodResolver(userSchema) })
   useEffect(() => {
-    if (open) reset(member || { name: '', email: '', role: 'Editor', status: 'Invited' })
+    if (open) reset(member || { name: '', email: '', role: 'user', status: 'Invited' })
   }, [member, open, reset])
   const submit = (values: UserFormValues) => {
     if (
@@ -1225,10 +1227,10 @@ function MemberEditor({
       return
     }
     if (
-      member?.role === 'Admin' &&
+      member?.role === 'administrator' &&
       member.status === 'Active' &&
-      (values.role !== 'Admin' || values.status !== 'Active') &&
-      users.filter((user) => user.role === 'Admin' && user.status === 'Active').length <= 1
+      (values.role !== 'administrator' || values.status !== 'Active') &&
+      users.filter((user) => user.role === 'administrator' && user.status === 'Active').length <= 1
     ) {
       setError('role', { message: 'Keep at least one active administrator in the workspace.' })
       return
@@ -1270,9 +1272,11 @@ function MemberEditor({
         <div className="entity-form-grid">
           <Field label="Workspace role" error={errors.role?.message}>
             <Select {...register('role')}>
-              <option>Admin</option>
-              <option>Editor</option>
-              <option>Reviewer</option>
+              {memberRoles.map((role) => (
+                <option value={role} key={role}>
+                  {ROLE_LABELS[role]}
+                </option>
+              ))}
             </Select>
           </Field>
           <Field label="Status">
@@ -1284,8 +1288,8 @@ function MemberEditor({
           </Field>
         </div>
         <p className="entity-form-hint">
-          Admins manage the workspace, editors create content, and reviewers review content. Role
-          enforcement requires backend authorization.
+          Users create content, managers maintain the catalog and review content, and administrators
+          also manage members. Production role enforcement requires backend authorization.
         </p>
       </form>
     </Modal>
@@ -1321,25 +1325,27 @@ export function AdminPage() {
   }
   const filtered = users.filter(
     (user) =>
-      `${user.name} ${user.email} ${user.role}`.toLowerCase().includes(search.toLowerCase()) &&
+      `${user.name} ${user.email} ${ROLE_LABELS[user.role]}`
+        .toLowerCase()
+        .includes(search.toLowerCase()) &&
       (roleFilter === 'All roles' || user.role === roleFilter) &&
       (statusFilter === 'All statuses' || user.status === statusFilter),
   )
-  const roles = [
+  const roles: { role: AppRole; description: string; permissions: string[] }[] = [
     {
-      name: 'Admin',
-      description: 'Manage workspace settings, members, and all content.',
-      permissions: ['Manage members', 'Edit content', 'Review content', 'Workspace settings'],
+      role: 'administrator',
+      description: 'Manage members, maintain the catalog, and create and review content.',
+      permissions: ['Manage members', 'Manage catalog', 'Create content', 'Review content'],
     },
     {
-      name: 'Editor',
-      description: 'Create and maintain products, brands, and marketing content.',
-      permissions: ['Create content', 'Manage brand context', 'Edit drafts'],
+      role: 'manager',
+      description: 'Maintain products, brands, and audiences. Create and review content.',
+      permissions: ['Manage catalog', 'Create content', 'Review content', 'View analytics'],
     },
     {
-      name: 'Reviewer',
-      description: 'Review drafts and provide editorial feedback.',
-      permissions: ['View workspace', 'Review content'],
+      role: 'user',
+      description: 'Create content in the studios and work with unapproved drafts.',
+      permissions: ['Create content', 'Edit drafts', 'View content history'],
     },
   ]
   return (
@@ -1400,8 +1406,11 @@ export function AdminPage() {
             >
               <Field label="Role">
                 <Select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)}>
-                  {['All roles', 'Admin', 'Editor', 'Reviewer'].map((role) => (
-                    <option key={role}>{role}</option>
+                  <option>All roles</option>
+                  {memberRoles.map((role) => (
+                    <option value={role} key={role}>
+                      {ROLE_LABELS[role]}
+                    </option>
                   ))}
                 </Select>
               </Field>
@@ -1435,7 +1444,7 @@ export function AdminPage() {
                   <strong>{user.name}</strong>
                   <small>{user.email}</small>
                 </button>
-                <span className="entity-role-pill">{user.role}</span>
+                <span className="entity-role-pill">{ROLE_LABELS[user.role]}</span>
                 <Badge
                   tone={
                     user.status === 'Active'
@@ -1455,9 +1464,10 @@ export function AdminPage() {
                       name: user.name,
                       action: () => {
                         if (
-                          user.role === 'Admin' &&
+                          user.role === 'administrator' &&
                           users.filter(
-                            (member) => member.role === 'Admin' && member.status === 'Active',
+                            (member) =>
+                              member.role === 'administrator' && member.status === 'Active',
                           ).length <= 1 &&
                           user.status === 'Active'
                         ) {
@@ -1489,15 +1499,17 @@ export function AdminPage() {
         <div className="entity-role-grid">
           {roles
             .filter((role) =>
-              `${role.name} ${role.description}`.toLowerCase().includes(search.toLowerCase()),
+              `${ROLE_LABELS[role.role]} ${role.description}`
+                .toLowerCase()
+                .includes(search.toLowerCase()),
             )
             .map((role) => (
-              <article className="entity-role-card" key={role.name}>
+              <article className="entity-role-card" key={role.role}>
                 <ShieldCheck size={26} />
-                <h2>{role.name}</h2>
+                <h2>{ROLE_LABELS[role.role]}</h2>
                 <p>{role.description}</p>
                 <Badge tone="green">
-                  {users.filter((user) => user.role === role.name).length} members
+                  {users.filter((user) => user.role === role.role).length} members
                 </Badge>
                 <ul>
                   {role.permissions.map((permission) => (
@@ -1584,17 +1596,17 @@ export function AdminPage() {
         onClose={() => setEditor({ open: false, value: null })}
         onSave={(user) => {
           if (
-            editor.value?.role === 'Admin' &&
+            editor.value?.role === 'administrator' &&
             editor.value.status === 'Active' &&
-            (user.role !== 'Admin' || user.status !== 'Active') &&
-            users.filter((member) => member.role === 'Admin' && member.status === 'Active')
+            (user.role !== 'administrator' || user.status !== 'Active') &&
+            users.filter((member) => member.role === 'administrator' && member.status === 'Active')
               .length <= 1
           ) {
             notify('Keep at least one active administrator in the workspace.', 'error')
             return
           }
           saveUser(user)
-          log(`${editor.value ? 'Updated' : 'Added'} ${user.name} (${user.role})`)
+          log(`${editor.value ? 'Updated' : 'Added'} ${user.name} (${ROLE_LABELS[user.role]})`)
           notify(editor.value ? 'Member updated.' : 'Demo invitation created. No email was sent.')
         }}
       />

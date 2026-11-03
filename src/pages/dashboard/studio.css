@@ -171,6 +171,7 @@
   font-size: 14px;
   padding: 13px 16px;
   line-height: 1.45;
+  white-space: normal;
 }
 .studio-quick-buttons > button svg {
   flex-shrink: 0;
@@ -1255,6 +1256,8 @@
   .studio-filter-tabs {
     align-self: stretch;
     justify-content: center;
+    flex-wrap: wrap;
+    border-radius: 18px;
   }
   .studio-filter-tabs button {
     flex: 1;

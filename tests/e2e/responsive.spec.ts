@@ -1,5 +1,14 @@
 import { expect, test } from '@playwright/test'
 
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      'contentcraft-demo-session',
+      JSON.stringify({ name: 'Demo Admin', email: 'admin@example.com', role: 'administrator' }),
+    )
+  })
+})
+
 for (const width of [430, 768, 1024]) {
   test(`all workspace screens remain usable at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 1000 })

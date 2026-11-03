@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { startTransition, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   BarChart3,
@@ -19,9 +19,11 @@ import {
   ExternalLink,
 } from 'lucide-react'
 import { Badge, BrandMark, Button, Modal } from '../components/ui'
+import { canAccessRoute, ROLE_LABELS } from '../auth/roles'
 import { useAuth } from '../contexts/AuthContext'
 import { useWorkspace } from '../contexts/WorkspaceContext'
 import { ROUTES } from '../routes/paths'
+import '../styles/roles.css'
 
 const navigation = [
   [ROUTES.dashboard, 'Dashboard', Home],
@@ -41,7 +43,17 @@ export default function DashboardLayout() {
   const navigate = useNavigate()
   const { session, signOut } = useAuth()
   const { contents } = useWorkspace()
-  const title = navigation.find(([path]) => location.pathname === path)?.[1] || 'Workspace'
+  const role = session?.role ?? 'user'
+  const visibleNavigation = navigation.filter(([path]) => canAccessRoute(role, path))
+  const title = visibleNavigation.find(([path]) => location.pathname === path)?.[1] || 'Workspace'
+
+  function returnToRoleSelection() {
+    startTransition(() => {
+      signOut()
+      setPanel(null)
+      navigate(ROUTES.login, { replace: true })
+    })
+  }
   return (
     <div className="workspace-shell">
       {mobileOpen && (
@@ -63,14 +75,14 @@ export default function DashboardLayout() {
           <X size={21} />
         </button>
         <nav aria-label="Workspace navigation">
-          {navigation.map(([path, label, Icon], i) => (
+          {visibleNavigation.map(([path, label, Icon]) => (
             <NavLink
               key={path}
               to={path}
               end={path === ROUTES.dashboard}
               onClick={() => setMobileOpen(false)}
               className={({ isActive }) =>
-                `sidebar-link ${isActive ? 'active' : ''} ${i === 6 ? 'sidebar-divider' : ''}`
+                `sidebar-link ${isActive ? 'active' : ''} ${path === ROUTES.history ? 'sidebar-divider' : ''}`
               }
             >
               <Icon size={18} />
@@ -85,7 +97,7 @@ export default function DashboardLayout() {
           </span>
           <span>
             <strong>Enterprise Plan</strong>
-            <small>Status: Demo</small>
+            <small>{ROLE_LABELS[role]} · Demo</small>
           </span>
           <ChevronDown size={15} />
         </button>
@@ -105,7 +117,7 @@ export default function DashboardLayout() {
             <strong>{title}</strong>
           </div>
           <div className="header-actions">
-            <span className="workspace-demo-label">Demo workspace</span>
+            <span className={`workspace-role workspace-role-${role}`}>{ROLE_LABELS[role]}</span>
             <button
               className="icon-button notification-button"
               aria-label="Open notifications"
@@ -165,31 +177,18 @@ export default function DashboardLayout() {
             <h3>{session?.name || 'C1SE.95 Team'}</h3>
             <p>{session?.email || 'Exploring the demo workspace'}</p>
           </div>
-          <Badge>Demo</Badge>
+          <Badge>{ROLE_LABELS[role]}</Badge>
         </div>
         <p className="muted">
           Products, content, and team records are examples stored on this device. No live account or
           backend session is created.
         </p>
         <div className="modal-actions">
-          <Button
-            variant="secondary"
-            onClick={() => {
-              setPanel(null)
-              navigate(ROUTES.login)
-            }}
-          >
-            Demo sign in
+          <Button variant="secondary" onClick={returnToRoleSelection}>
+            Switch role
           </Button>
-          <Button
-            variant="ghost"
-            onClick={() => {
-              signOut()
-              setPanel(null)
-              navigate(ROUTES.home)
-            }}
-          >
-            <LogOut size={16} /> Leave workspace
+          <Button variant="ghost" onClick={returnToRoleSelection}>
+            <LogOut size={16} /> Sign out
           </Button>
         </div>
       </Modal>
